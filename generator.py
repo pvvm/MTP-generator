@@ -1,0 +1,418 @@
+import random
+import rstr
+
+# TODO: add function/method call
+# TODO: add struct/context/event variable access (something like `ctx.var_name`)
+
+STRUCT = 1
+EVENT = 2
+
+SCOPE_CNT = 0
+
+INT_TYPE = ["int8", "int16", "int32", "int64"]
+FLOAT_TYPE = ["float"]
+BOOL_TYPE = ["bool"]
+LIST_TYPE = ["list"]
+
+BINARY_OPS = ["+", "-", "*", "/", "%", "==", "!=", "<", ">", "<=", ">=", "&&", "||"]
+UNARY_OPS = ["-", "!"]
+
+"""
+Each entry of this list is a list representing a scope.
+Each inner list contains dictionaries representing variables.
+Each dictionary has two keys:
+- "name": the name of the variable
+- "type": the type of the variable
+"""
+LIST_OF_VARS = []
+
+# Counter of variables that the current scope has access to.
+VAR_CNT = 0
+
+"""
+Dictionary that holds the structs defined in the code.
+The keys are the struct names, and the values are lists of dictionaries
+representing the variables in the struct.
+Each dictionary has two keys:
+- "name": the name of the variable
+- "type": the type of the variable
+"""
+DICT_OF_STRUCTS = {}
+
+"""
+Dictionary that holds the event processors that process each type of event.
+The keys are the event names, and the values are lists of event processor
+name that process that event.
+"""
+DICT_OF_EV_EP = {}
+
+"""
+Dictionary that holds the event variable declarations.
+The keys are the event types ("APP", "NET", "TIMER"), and the values are dictionaries
+that hold the event names and their variable declarations.
+The keys of the inner dictionaries are the event names, and the values are lists of dictionaries
+representing the variables in the event.
+Each dictionary has two keys:
+- "name": the name of the variable
+- "type": the type of the variable
+"""
+DICT_OF_EV_DECL = {"APP": {}, "NET": {}, "TIMER": {}}
+
+# Type of the value returned by the current event processor.
+CURR_EP_RETURN_TYPE = ""
+
+# Name of the context and scratchpad used in the code.
+CONTEXT_NAME = ""
+SCRATCH_NAME = ""
+
+def indentation():
+    """
+    Returns a string with the current indentation level.
+    """
+    return "\t" * SCOPE_CNT
+
+def type():
+    """
+    Generates a random type declaration.
+    """
+    types = INT_TYPE + FLOAT_TYPE + BOOL_TYPE + LIST_TYPE
+    return random.choice(types)
+
+def var_id():
+    """
+    Generates a random variable identifier.
+    """
+    return rstr.xeger(r'[A-Za-z_][A-Za-z0-9_]{0,10}')
+
+def catch_var_id():
+    while True:
+        index = random.randint(0, len(LIST_OF_VARS) - 1)
+        if(len(LIST_OF_VARS[index]) > 0):
+            break
+    return random.choice(LIST_OF_VARS[index])["name"]
+
+def var_or_const():
+    """
+    Returns a variable or a random constant.
+    """
+    if(random.randint(0, 1) and len(LIST_OF_VARS) > 0 and VAR_CNT > 0):
+        return catch_var_id()
+    else:
+        # Generate a random int
+        if(random.randint(0, 1)):
+            return rstr.xeger(r'[0-9]{1,10}')
+        # Generate a random float
+        else:
+            return rstr.xeger(r'[0-9]{1,10}[.][0-9]{1,5}')
+
+def expression():
+    """
+    Generates a random expression.
+    """
+    rnd_num = random.randint(0, 3)
+    if(rnd_num == 3):
+        return var_or_const() + " " + random.choice(BINARY_OPS) + " " + expression()
+    elif(rnd_num == 2):
+        return random.choice(UNARY_OPS) + expression()
+    elif(rnd_num == 1):
+        return "(" + expression() + ")"
+    else:
+        return var_or_const()
+
+
+def assign():
+    """
+    Generates a random assignment expression.
+    """
+    return " = " + expression()
+
+
+def var_decl(struct_like=False, struct_name=None, event_type=None):
+    """
+    Generates a random variable declaration.
+    """
+    global VAR_CNT
+    id = var_id()
+    type_id = type()
+    decl = type_id + " " + id
+    # Assign value
+    if(random.randint(0, 1) and not struct_like):
+        decl += assign()
+
+    if(not struct_like):
+        LIST_OF_VARS[SCOPE_CNT].append({"name": id, "type": type_id})
+        VAR_CNT += 1
+    else:
+        if(struct_like == STRUCT):
+            if(struct_name not in DICT_OF_STRUCTS):
+                DICT_OF_STRUCTS[struct_name] = []
+            DICT_OF_STRUCTS[struct_name].append({"name": id, "type": type_id})
+
+        elif(struct_like == EVENT):
+            if(struct_name not in DICT_OF_EV_DECL[event_type]):
+                DICT_OF_EV_DECL[event_type][struct_name] = []
+                DICT_OF_EV_EP[struct_name] = []
+            DICT_OF_EV_DECL[event_type][struct_name].append({"name": id, "type": type_id})
+    return decl + ";"
+
+def return_statement():
+    """
+    Generates a random return statement.
+    """
+    if(CURR_EP_RETURN_TYPE == "void"):
+        return "return;"
+    if(random.randint(0, 1) and len(LIST_OF_VARS) and VAR_CNT > 0):
+        return "return " + catch_var_id() + assign() + ";"
+    return "return " + expression() + ";"
+
+
+def for_statement():
+    """
+    Generates a random for loop statement.
+    """
+    global SCOPE_CNT
+    first_arg = ""
+    if(random.randint(0, 1) and len(LIST_OF_VARS) > 0 and VAR_CNT > 0):
+        first_arg = catch_var_id() + assign() + ";"
+    else:
+        first_arg = var_decl()
+    second_arg = expression()
+    third_arg = catch_var_id() + assign()
+    for_stmt = "for(" + first_arg + " " + second_arg + "; " + third_arg + ") {\n"
+    SCOPE_CNT += 1
+    for_stmt += statements()
+    SCOPE_CNT -= 1
+    for_stmt += indentation() + "}"
+
+    return indentation() + for_stmt
+
+def while_statement():
+    """
+    Generates a random while loop statement.
+    """
+    global SCOPE_CNT
+    while_stmt = "while(" + expression() + ") {\n"
+    SCOPE_CNT += 1
+    while_stmt += statements()
+    SCOPE_CNT -= 1
+    while_stmt += indentation() + "}"
+
+    return indentation() + while_stmt
+
+def condition_statement():
+    """
+    Generates a random conditional statement.
+    """
+    global SCOPE_CNT
+    cond_stmt = "if(" + expression() + ") {\n"
+    SCOPE_CNT += 1
+    cond_stmt += statements()
+    SCOPE_CNT -= 1
+    cond_stmt += indentation() + "}"
+
+    for _ in range(random.randint(0, 2)):
+        cond_stmt += "\n" + indentation() + "else if(" + expression() + ") {\n"
+        SCOPE_CNT += 1
+        cond_stmt += statements()
+        SCOPE_CNT -= 1
+        cond_stmt += indentation() + "}"
+    
+    if(random.randint(0, 1)):
+        cond_stmt += "\n" + indentation() + "else {\n"
+        SCOPE_CNT += 1
+        cond_stmt += statements()
+        SCOPE_CNT -= 1
+        cond_stmt += indentation() + "}"
+
+    return indentation() + cond_stmt
+
+def statements():
+    """
+    Generates a random sequence of statements.
+    """
+    global VAR_CNT
+
+    LIST_OF_VARS.append([])
+
+    total_statements = ""
+
+    if(SCOPE_CNT < 3):
+        for _ in range(random.randint(1, 5)):
+            stmt_num = random.randint(0, 5)
+
+            if(stmt_num == 5):
+                total_statements += indentation() + return_statement() + "\n"
+            elif(stmt_num == 4 and len(LIST_OF_VARS) and VAR_CNT > 0):
+                total_statements += indentation() + catch_var_id() + assign() + "\n"
+            elif(stmt_num == 3):
+                total_statements += indentation() + var_decl() + "\n"
+            elif(stmt_num == 2):
+                for_stmt = for_statement()
+                if(for_stmt != None):
+                    total_statements += for_stmt + "\n"
+            elif(stmt_num == 1):
+                while_stmt = while_statement()
+                if(while_stmt != None):
+                    total_statements += while_stmt + "\n"
+            else:
+                cond_stmt = condition_statement()
+                if(cond_stmt != None):
+                    total_statements += cond_stmt + "\n"
+    else:
+        for _ in range(random.randint(1, 5)):
+            stmt_num = random.randint(0, 2)
+            if(stmt_num == 2):
+                total_statements += indentation() + return_statement() + "\n"
+            elif(stmt_num == 1 and len(LIST_OF_VARS) and VAR_CNT > 0):
+                total_statements += indentation() + catch_var_id() + assign() + "\n"
+            elif(stmt_num == 0):
+                total_statements += indentation() + var_decl() + "\n"
+
+    VAR_CNT -= len(LIST_OF_VARS[-1])
+    LIST_OF_VARS.pop()
+    return total_statements
+
+def ep_decl():
+    """
+    Generates a random event processor declaration.
+    """
+    global SCOPE_CNT, CURR_EP_RETURN_TYPE
+    ep_decl = ""
+
+    for event_name in DICT_OF_EV_EP.keys():
+        for _ in range(random.randint(1, 3)):
+
+            returns_instr = random.randint(0, 1)
+            if(returns_instr):
+                ep_decl += "list<instr_t> "
+                CURR_EP_RETURN_TYPE = "list<instr_t>"
+            else:
+                ep_decl += "void "
+                CURR_EP_RETURN_TYPE = "void"
+
+            ep_name = rstr.xeger(r'[A-Z][a-zA-Z0-9_]{0,10}')
+            DICT_OF_EV_EP[event_name].append(ep_name)
+            ep_decl += ep_name + "(" + event_name + " ev, " + CONTEXT_NAME + " ctx, " + SCRATCH_NAME +" scratch){\n"
+
+            SCOPE_CNT += 1
+            LIST_OF_VARS.append([{"name": "ev", "type": event_name},
+                                 {"name": "ctx", "type": CONTEXT_NAME},
+                                 {"name": SCRATCH_NAME, "type": "scratch"}])
+            ep_decl += statements()
+            SCOPE_CNT -= 1
+            ep_decl += "}\n\n"
+    return ep_decl
+
+def struct_decl():
+    """
+    Generates a random struct declaration.
+    """
+    global SCOPE_CNT
+    struct_name = rstr.xeger(r'[A-Z][a-zA-Z0-9_]{0,10}')
+
+    struct_decl = "struct " + struct_name + " {\n"
+    SCOPE_CNT += 1
+
+    for _ in range(random.randint(1, 8)):
+        struct_decl += indentation() + var_decl(STRUCT, struct_name) + "\n"
+
+    SCOPE_CNT -= 1
+    struct_decl += indentation() + "}\n"
+    return struct_decl
+
+def event_decl():
+    """
+    Generates a random event declaration.
+    """
+    global SCOPE_CNT
+    event_name = rstr.xeger(r'[A-Z][a-zA-Z0-9_]{0,10}')
+
+    event_type = random.choice(list(DICT_OF_EV_DECL.keys()))
+
+    ev_decl = "event " + event_name + " : " + event_type + " {\n"
+    SCOPE_CNT += 1
+
+    for _ in range(random.randint(1, 8)):
+        ev_decl += indentation() + var_decl(EVENT, event_name, event_type) + "\n"
+
+    SCOPE_CNT -= 1
+    ev_decl += indentation() + "}\n"
+    return ev_decl
+
+def context_decl():
+    """
+    Generates a random context declaration.
+    """
+    global SCOPE_CNT, CONTEXT_NAME
+    ctx_name = rstr.xeger(r'[A-Z][a-zA-Z0-9_]{0,10}')
+
+    context_decl = "context " + ctx_name + " {\n"
+    SCOPE_CNT += 1
+
+    for _ in range(random.randint(1, 15)):
+        context_decl += indentation() + var_decl(STRUCT, ctx_name) + "\n"
+
+    SCOPE_CNT -= 1
+    context_decl += indentation() + "}\n"
+
+    CONTEXT_NAME = ctx_name
+    return context_decl
+
+def scratch_decl():
+    """
+    Generates a random scratchpad declaration.
+    """
+    global SCOPE_CNT, SCRATCH_NAME
+    scratch_name = rstr.xeger(r'[A-Z][a-zA-Z0-9_]{0,10}')
+
+    scratch_decl = "scratchpad " + scratch_name + " {\n"
+    SCOPE_CNT += 1
+
+    for _ in range(random.randint(1, 5)):
+        scratch_decl += indentation() + var_decl(STRUCT, scratch_name) + "\n"
+
+    SCOPE_CNT -= 1
+    scratch_decl += indentation() + "}\n"
+
+    SCRATCH_NAME = scratch_name
+    return scratch_decl
+
+def dispatcher_decl():
+    """
+    Generates a random dispatcher declaration.
+    """
+    global SCOPE_CNT
+    dispatcher_name = rstr.xeger(r'[A-Z][a-zA-Z0-9_]{0,10}')
+    disp_decl = "dispatch " + dispatcher_name + " {\n"
+    SCOPE_CNT += 1
+    for event_name in DICT_OF_EV_EP.keys():
+        ep_chain = ""
+        first = True
+        for ep_name in DICT_OF_EV_EP[event_name]:
+            if(not first):
+                ep_chain += ", "
+            ep_chain += ep_name
+            first = False
+        disp_decl += indentation() + event_name + " -> {" + ep_chain + "};\n"
+
+    SCOPE_CNT -= 1
+    disp_decl += "}\n"
+    return disp_decl
+
+
+def generator():
+    print(struct_decl())
+    print(event_decl())
+    print(event_decl())
+    print(event_decl())
+    print(context_decl())
+    print(scratch_decl())
+    print(ep_decl())
+    print(dispatcher_decl())
+    #print(LIST_OF_VARS, SCOPE_CNT, VAR_CNT)
+    #print(DICT_OF_STRUCTS, DICT_OF_EV_DECL)
+    #print(DICT_OF_EV_EP)
+
+
+if __name__=="__main__":
+    generator()
