@@ -1,7 +1,9 @@
 import random
 import rstr
+from functions_mtp import *
 
 # TODO: add function/method call
+# TODO: add a way to different EPs to be shared between events
 
 STRUCT = 1
 EVENT = 2
@@ -99,29 +101,37 @@ def catch_struct_value(struct_id, struct_fields):
 
 def catch_var_id(var_type=None):
     index = 0
-    while True:
-        index = random.randint(0, len(LIST_OF_VARS) - 1)
-        if(len(LIST_OF_VARS[index]) > 0):
-            if(var_type == None):
+    if var_type == None:
+        while True:
+            index = random.randint(0, len(LIST_OF_VARS) - 1)
+            if(len(LIST_OF_VARS[index]) > 0):
                 break
-            # Returns the first that matches the specified var_type
-            for var in LIST_OF_VARS[index]:
-                if(var["type"] == var_type):
-                    return var["name"], var["type"]
-            #return None
-    random_var = random.choice(LIST_OF_VARS[index])
-    struct_id = random_var["type"]
-    # Check if the variable is a struct-like variable
-    if(struct_id in DICT_OF_STRUCTS):
-        return catch_struct_value(struct_id, DICT_OF_STRUCTS[struct_id])
-        
-    return random_var["name"], random_var["type"]
+        random_var = random.choice(LIST_OF_VARS[index])
+        struct_id = random_var["type"]
+        # Check if the variable is a struct-like variable
+        if(struct_id in DICT_OF_STRUCTS):
+            return catch_struct_value(struct_id, DICT_OF_STRUCTS[struct_id])
+        return random_var["name"], random_var["type"]
+    
+    list_vars = []
+    for entry in LIST_OF_VARS:
+        for var in entry:
+            if(var["type"] == var_type):
+                list_vars.append(var["name"])
+    
+    if(list_vars == []):
+        print("PROBLEM HEREEEEEE")
+        return None, var_type
+    
+    random_var = random.choice(list_vars)
+    return random_var, var_type
 
-def var_or_const():
+def var_or_const(var_type=None):
     """
     Returns a variable or a random constant.
     """
-    if(random.randint(0, 1) and len(LIST_OF_VARS) > 0 and VAR_CNT > 0):
+    if((random.randint(0, 2) < 2 and len(LIST_OF_VARS) > 0 and VAR_CNT > 0)
+       or var_type not in ["int", "float"]):
         return catch_var_id()
     else:
         # Generate a random int
@@ -130,17 +140,6 @@ def var_or_const():
         # Generate a random float
         else:
             return rstr.xeger(r'[0-9]{1,10}[.][0-9]{1,5}'), "float"
-        
-def function_call():
-    """
-    Generates a random function call.
-    """
-    func_name = rstr.xeger(r'[a-zA-Z_][a-zA-Z0-9_]{0,10}')
-    args = []
-    for _ in range(random.randint(1, 3)):
-        args.append(var_or_const()[0])
-    return func_name + "(" + ", ".join(args) + ")", "int"
-
 
 def expression():
     """
@@ -228,6 +227,10 @@ def struct_inst_decl():
 
     LIST_OF_VARS[SCOPE_CNT].append({"name": id, "type": struct_name})
     VAR_CNT += 1
+
+    for entry in DICT_OF_STRUCTS[struct_name]:
+        LIST_OF_VARS[SCOPE_CNT].append({"name": id + "." + entry["name"], "type": entry["type"]})
+        VAR_CNT += 1
 
     return decl
 
@@ -560,19 +563,17 @@ def dispatcher_decl():
 
 
 def generator():
-    print(struct_decl())
-    print(event_decl())
-    print(event_decl())
-    print(event_decl())
-    print(context_decl())
-    print(scratch_decl())
-    print(pkt_bp_decl())
-    print(ep_decl())
-    print(dispatcher_decl())
-    #print(LIST_OF_VARS, SCOPE_CNT, VAR_CNT)
-    #print(DICT_OF_STRUCTS)
-    #print(DICT_OF_EV_DECL)
-    #print(DICT_OF_EV_EP)
+    with open("generated_program.mtp", "w") as f:
+        for _ in range(random.randint(1, 3)):
+            f.write(struct_decl())
+        for _ in range(random.randint(3, 5)):
+            f.write(event_decl())
+        f.write(context_decl())
+        f.write(scratch_decl())
+        f.write(pkt_bp_decl())
+        for _ in range(random.randint(3, 5)):
+            f.write(ep_decl())
+        f.write(dispatcher_decl())
 
 
 if __name__=="__main__":
