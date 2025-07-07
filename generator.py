@@ -66,6 +66,9 @@ Each dictionary has two keys:
 """
 DICT_OF_EV_DECL = {"APP": {}, "NET": {}, "TIMER": {}}
 
+# Type of the event that the current event processor processes.
+CURR_EP_EVENT_TYPE = ""
+
 # Type of the value returned by the current event processor.
 CURR_EP_RETURN_TYPE = ""
 
@@ -141,47 +144,53 @@ def var_or_const(var_type=None):
         else:
             return rstr.xeger(r'[0-9]{1,10}[.][0-9]{1,5}'), "float"
 
-def expression():
+def expression(max_depth, expected_type=None):
     """
     Generates a random expression.
     """
-    while(1):
-        rnd_num = random.randint(0, 4)
-        if(rnd_num == 4):
-            # Function call
-            return function_call()
-        if(rnd_num == 3):
-            # Binary operation
-            exp_str_1, type_1 = var_or_const()
-            exp_str_2, type_2 = expression()
-            operation = random.choice(BINARY_OPS)
-            if(type_1 not in ["int", "float", "bool"] or type_2 not in ["int", "float", "bool"]):
-                continue
-            if(operation in ["==", "!=", "<", ">", "<=", ">=", "&&", "||"]):
-                return exp_str_1 + " " + operation + " " + exp_str_2, "bool"
-            if(type_1 == "float" or type_2 == "float"):
-                return exp_str_1 + " " + operation + " " + exp_str_2, "float"
-            return exp_str_1 + " " + operation + " " + exp_str_2, "int"
-        elif(rnd_num == 2):
-            # Unary operation
-            exp_str, type = expression()
-            if(type not in ["int", "float", "bool"]):
-                continue
-            return random.choice(UNARY_OPS) + exp_str, type
-        elif(rnd_num == 1):
-            # Nested expression
-            exp_str, type = expression()
-            return "(" + exp_str + ")", type
-        else:
-            # Variable or constant
+    if(expected_type != None and expected_type in ["void", "flow_id", "checksum16_t", "data_t", "instr_t"]):
+        return function_call(expected_type)
+
+    if(max_depth <= 0):
+        return var_or_const()
+    max_depth -= 1
+
+    rnd_num = random.randint(0, 3)
+    if(rnd_num == 3):
+        # Binary operation
+        exp_str_1, type_1 = var_or_const()
+        exp_str_2, type_2 = expression(max_depth)
+        operation = random.choice(BINARY_OPS)
+        if(type_1 not in ["int", "float", "bool"] or type_2 not in ["int", "float", "bool"]):
+            # TODO: maybe we should send a list with the types of the variables we want from var_or_const
             return var_or_const()
+        if(operation in ["==", "!=", "<", ">", "<=", ">=", "&&", "||"]):
+            return exp_str_1 + " " + operation + " " + exp_str_2, "bool"
+        if(type_1 == "float" or type_2 == "float"):
+            return exp_str_1 + " " + operation + " " + exp_str_2, "float"
+        return exp_str_1 + " " + operation + " " + exp_str_2, "int"
+    elif(rnd_num == 2):
+        # Unary operation
+        exp_str, type = expression(max_depth)
+        if(type not in ["int", "float", "bool"]):
+            # TODO: maybe we should send a list with the types of the variables we want from var_or_const
+            return var_or_const()
+        return random.choice(UNARY_OPS) + exp_str, type
+    elif(rnd_num == 1):
+        # Nested expression
+        exp_str, type = expression(max_depth)
+        return "(" + exp_str + ")", type
+    else:
+        # Variable or constant
+        return var_or_const()
 
 
-def assign():
+def assign(expected_type=None):
     """
     Generates a random assignment expression.
     """
-    exp_str, type = expression()
+    max_depth = random.randint(1, 10)
+    exp_str, type = expression(max_depth, expected_type)
     return " = " + exp_str, type
 
 
@@ -195,7 +204,7 @@ def var_decl(struct_like=False, struct_name=None, event_type=None):
     decl = type_id + " " + id
     # Assign value
     if(random.randint(0, 1) and not struct_like):
-        exp_str, type = assign()
+        exp_str, type = assign(type_id)
         decl += exp_str
 
     if(not struct_like):
@@ -246,8 +255,9 @@ def return_statement():
             return "PROBLEM"
         return "return " + var_id + ";"
     if(random.randint(0, 1) and len(LIST_OF_VARS) and VAR_CNT > 0):
-        return "return " + catch_var_id()[0] + assign() + ";"
-    exp_str, type = expression()
+        exp_str, type = catch_var_id()
+        return "return " + exp_str + assign(type) + ";"
+    exp_str, type = expression(random.randint(1, 10))
     return "return " + exp_str + ";"
 
 
@@ -259,14 +269,14 @@ def for_statement():
     first_arg = ""
     if(random.randint(0, 1) and len(LIST_OF_VARS) > 0 and VAR_CNT > 0):
         exp_str_1, type_1 = catch_var_id()
-        exp_str_2, type_2 = assign()
+        exp_str_2, type_2 = assign(type_1)
         first_arg = exp_str_1 + exp_str_2 + ";"
     else:
         first_arg = var_decl()
-    second_arg_str, second_arg_type = expression()
+    second_arg_str, second_arg_type = expression(random.randint(1, 10))
 
     third_arg_str_1, third_arg_type_1 = catch_var_id()
-    third_arg_str_2, third_arg_type_2 = assign()
+    third_arg_str_2, third_arg_type_2 = assign(third_arg_type_1)
     for_stmt = "for(" + first_arg + " " + second_arg_str + "; " + third_arg_str_1 + third_arg_str_2 + ") {\n"
     SCOPE_CNT += 1
     for_stmt += statements()
@@ -280,7 +290,7 @@ def while_statement():
     Generates a random while loop statement.
     """
     global SCOPE_CNT
-    exp_str, type = expression()
+    exp_str, type = expression(random.randint(1, 10))
     while_stmt = "while(" + exp_str + ") {\n"
     SCOPE_CNT += 1
     while_stmt += statements()
@@ -294,7 +304,7 @@ def condition_statement():
     Generates a random conditional statement.
     """
     global SCOPE_CNT
-    exp_str, type = expression()
+    exp_str, type = expression(random.randint(1, 10))
     cond_stmt = "if(" + exp_str + ") {\n"
     SCOPE_CNT += 1
     cond_stmt += statements()
@@ -302,7 +312,7 @@ def condition_statement():
     cond_stmt += indentation() + "}"
 
     for _ in range(random.randint(0, 2)):
-        exp_str, type = expression()
+        exp_str, type = expression(random.randint(1, 10))
         cond_stmt += "\n" + indentation() + "else if(" + exp_str + ") {\n"
         SCOPE_CNT += 1
         cond_stmt += statements()
@@ -341,7 +351,7 @@ def statements():
                 REPEAT = True
             elif(stmt_num == 5 and len(LIST_OF_VARS) and VAR_CNT > 0):
                 exp_str_1, type_1 = catch_var_id()
-                exp_str_2, type_2 = assign()
+                exp_str_2, type_2 = assign(type_1)
                 total_statements += indentation() + exp_str_1 + exp_str_2 + "\n"
             elif(stmt_num == 4):
                 total_statements += indentation() + var_decl() + "\n"
@@ -383,7 +393,7 @@ def statements():
                 REPEAT = True
             elif(stmt_num == 2 and len(LIST_OF_VARS) and VAR_CNT > 0):
                 exp_str_1, type_1 = catch_var_id()
-                exp_str_2, type_2 = assign()
+                exp_str_2, type_2 = assign(type_1)
                 total_statements += indentation() + exp_str_1 + exp_str_2 + "\n"
             elif(stmt_num == 1):
                 total_statements += indentation() + struct_inst_decl() + "\n"
@@ -401,7 +411,7 @@ def ep_decl():
     """
     Generates a random event processor declaration.
     """
-    global SCOPE_CNT, CURR_EP_RETURN_TYPE, VAR_CNT
+    global SCOPE_CNT, CURR_EP_EVENT_TYPE, CURR_EP_RETURN_TYPE, VAR_CNT
     ep_decl = ""
 
     for event_name in DICT_OF_EV_EP.keys():
@@ -423,6 +433,8 @@ def ep_decl():
             LIST_OF_VARS.append([{"name": "ev", "type": event_name},
                                  {"name": "ctx", "type": CONTEXT_NAME},
                                  {"name": "scratch", "type": SCRATCH_NAME}])
+
+            CURR_EP_EVENT_TYPE = event_name
             
             # TODO: maybe add a randomized list<instr_t> variable declaration 
             if(returns_instr):
