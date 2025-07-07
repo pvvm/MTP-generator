@@ -77,7 +77,7 @@ def indentation():
     """
     return "\t" * SCOPE_CNT
 
-def type():
+def get_type():
     """
     Generates a random type declaration.
     """
@@ -95,7 +95,7 @@ def catch_struct_value(struct_id, struct_fields):
     Returns a random field from a struct-like instance.
     """
     random_field = random.choice(struct_fields)
-    return struct_id + "." + random_field["name"]
+    return struct_id + "." + random_field["name"], random_field["type"]
 
 def catch_var_id(var_type=None):
     index = 0
@@ -104,9 +104,10 @@ def catch_var_id(var_type=None):
         if(len(LIST_OF_VARS[index]) > 0):
             if(var_type == None):
                 break
+            # Returns the first that matches the specified var_type
             for var in LIST_OF_VARS[index]:
                 if(var["type"] == var_type):
-                    return var["name"]
+                    return var["name"], var["type"]
             #return None
     random_var = random.choice(LIST_OF_VARS[index])
     struct_id = random_var["type"]
@@ -114,7 +115,7 @@ def catch_var_id(var_type=None):
     if(struct_id in DICT_OF_STRUCTS):
         return catch_struct_value(struct_id, DICT_OF_STRUCTS[struct_id])
         
-    return random_var["name"]
+    return random_var["name"], random_var["type"]
 
 def var_or_const():
     """
@@ -125,36 +126,64 @@ def var_or_const():
     else:
         # Generate a random int
         if(random.randint(0, 1)):
-            return rstr.xeger(r'[0-9]{1,10}')
+            return rstr.xeger(r'[0-9]{1,10}'), "int"
         # Generate a random float
         else:
-            return rstr.xeger(r'[0-9]{1,10}[.][0-9]{1,5}')
+            return rstr.xeger(r'[0-9]{1,10}[.][0-9]{1,5}'), "float"
         
-#def function_call():
+def function_call():
+    """
+    Generates a random function call.
+    """
+    func_name = rstr.xeger(r'[a-zA-Z_][a-zA-Z0-9_]{0,10}')
+    args = []
+    for _ in range(random.randint(1, 3)):
+        args.append(var_or_const()[0])
+    return func_name + "(" + ", ".join(args) + ")", "int"
 
 
 def expression():
     """
     Generates a random expression.
     """
-    rnd_num = random.randint(0, 3)
-    #if(rnd_num == 4):
-    #    return function_call()
-    if(rnd_num == 3):
-        return var_or_const() + " " + random.choice(BINARY_OPS) + " " + expression()
-    elif(rnd_num == 2):
-        return random.choice(UNARY_OPS) + expression()
-    elif(rnd_num == 1):
-        return "(" + expression() + ")"
-    else:
-        return var_or_const()
+    while(1):
+        rnd_num = random.randint(0, 4)
+        if(rnd_num == 4):
+            # Function call
+            return function_call()
+        if(rnd_num == 3):
+            # Binary operation
+            exp_str_1, type_1 = var_or_const()
+            exp_str_2, type_2 = expression()
+            operation = random.choice(BINARY_OPS)
+            if(type_1 not in ["int", "float", "bool"] or type_2 not in ["int", "float", "bool"]):
+                continue
+            if(operation in ["==", "!=", "<", ">", "<=", ">=", "&&", "||"]):
+                return exp_str_1 + " " + operation + " " + exp_str_2, "bool"
+            if(type_1 == "float" or type_2 == "float"):
+                return exp_str_1 + " " + operation + " " + exp_str_2, "float"
+            return exp_str_1 + " " + operation + " " + exp_str_2, "int"
+        elif(rnd_num == 2):
+            # Unary operation
+            exp_str, type = expression()
+            if(type not in ["int", "float", "bool"]):
+                continue
+            return random.choice(UNARY_OPS) + exp_str, type
+        elif(rnd_num == 1):
+            # Nested expression
+            exp_str, type = expression()
+            return "(" + exp_str + ")", type
+        else:
+            # Variable or constant
+            return var_or_const()
 
 
 def assign():
     """
     Generates a random assignment expression.
     """
-    return " = " + expression()
+    exp_str, type = expression()
+    return " = " + exp_str, type
 
 
 def var_decl(struct_like=False, struct_name=None, event_type=None):
@@ -163,11 +192,12 @@ def var_decl(struct_like=False, struct_name=None, event_type=None):
     """
     global VAR_CNT
     id = var_id()
-    type_id = type()
+    type_id = get_type()
     decl = type_id + " " + id
     # Assign value
     if(random.randint(0, 1) and not struct_like):
-        decl += assign()
+        exp_str, type = assign()
+        decl += exp_str
 
     if(not struct_like):
         LIST_OF_VARS[SCOPE_CNT].append({"name": id, "type": type_id})
@@ -208,13 +238,14 @@ def return_statement():
     if(CURR_EP_RETURN_TYPE == "void"):
         return "return;"
     elif(CURR_EP_RETURN_TYPE == "list<instr_t>"):
-        var_id = catch_var_id("list<instr_t>")
+        var_id = catch_var_id("list<instr_t>")[0]
         if(var_id == None):
             return "PROBLEM"
         return "return " + var_id + ";"
     if(random.randint(0, 1) and len(LIST_OF_VARS) and VAR_CNT > 0):
-        return "return " + catch_var_id() + assign() + ";"
-    return "return " + expression() + ";"
+        return "return " + catch_var_id()[0] + assign() + ";"
+    exp_str, type = expression()
+    return "return " + exp_str + ";"
 
 
 def for_statement():
@@ -224,12 +255,16 @@ def for_statement():
     global SCOPE_CNT
     first_arg = ""
     if(random.randint(0, 1) and len(LIST_OF_VARS) > 0 and VAR_CNT > 0):
-        first_arg = catch_var_id() + assign() + ";"
+        exp_str_1, type_1 = catch_var_id()
+        exp_str_2, type_2 = assign()
+        first_arg = exp_str_1 + exp_str_2 + ";"
     else:
         first_arg = var_decl()
-    second_arg = expression()
-    third_arg = catch_var_id() + assign()
-    for_stmt = "for(" + first_arg + " " + second_arg + "; " + third_arg + ") {\n"
+    second_arg_str, second_arg_type = expression()
+
+    third_arg_str_1, third_arg_type_1 = catch_var_id()
+    third_arg_str_2, third_arg_type_2 = assign()
+    for_stmt = "for(" + first_arg + " " + second_arg_str + "; " + third_arg_str_1 + third_arg_str_2 + ") {\n"
     SCOPE_CNT += 1
     for_stmt += statements()
     SCOPE_CNT -= 1
@@ -242,7 +277,8 @@ def while_statement():
     Generates a random while loop statement.
     """
     global SCOPE_CNT
-    while_stmt = "while(" + expression() + ") {\n"
+    exp_str, type = expression()
+    while_stmt = "while(" + exp_str + ") {\n"
     SCOPE_CNT += 1
     while_stmt += statements()
     SCOPE_CNT -= 1
@@ -255,14 +291,16 @@ def condition_statement():
     Generates a random conditional statement.
     """
     global SCOPE_CNT
-    cond_stmt = "if(" + expression() + ") {\n"
+    exp_str, type = expression()
+    cond_stmt = "if(" + exp_str + ") {\n"
     SCOPE_CNT += 1
     cond_stmt += statements()
     SCOPE_CNT -= 1
     cond_stmt += indentation() + "}"
 
     for _ in range(random.randint(0, 2)):
-        cond_stmt += "\n" + indentation() + "else if(" + expression() + ") {\n"
+        exp_str, type = expression()
+        cond_stmt += "\n" + indentation() + "else if(" + exp_str + ") {\n"
         SCOPE_CNT += 1
         cond_stmt += statements()
         SCOPE_CNT -= 1
@@ -299,7 +337,9 @@ def statements():
                     continue
                 REPEAT = True
             elif(stmt_num == 5 and len(LIST_OF_VARS) and VAR_CNT > 0):
-                total_statements += indentation() + catch_var_id() + assign() + "\n"
+                exp_str_1, type_1 = catch_var_id()
+                exp_str_2, type_2 = assign()
+                total_statements += indentation() + exp_str_1 + exp_str_2 + "\n"
             elif(stmt_num == 4):
                 total_statements += indentation() + var_decl() + "\n"
             elif(stmt_num == 3):
@@ -339,7 +379,9 @@ def statements():
                     continue
                 REPEAT = True
             elif(stmt_num == 2 and len(LIST_OF_VARS) and VAR_CNT > 0):
-                total_statements += indentation() + catch_var_id() + assign() + "\n"
+                exp_str_1, type_1 = catch_var_id()
+                exp_str_2, type_2 = assign()
+                total_statements += indentation() + exp_str_1 + exp_str_2 + "\n"
             elif(stmt_num == 1):
                 total_statements += indentation() + struct_inst_decl() + "\n"
             elif(stmt_num == 0):
