@@ -4,6 +4,9 @@ from functions_mtp import *
 
 # TODO: add function/method call
 # TODO: add a way to different EPs to be shared between events
+# TODO: add more types of variables
+# TODO: maybe we should send a list with the types of the variables we want from var_or_const.
+#       This will also be important to check the different kinds of int
 
 STRUCT = 1
 EVENT = 2
@@ -45,6 +48,7 @@ List of struct (only actual struct, not struct-like) and packet blueprint
  IDs that are used in the code.
 """
 STRUCT_PKT_BP_IDS = []
+PKT_BP_ID = ""
 
 
 """
@@ -533,23 +537,25 @@ def pkt_bp_decl():
     """
     Generates a random packet blueprint declaration.
     """
-    global SCOPE_CNT
+    global SCOPE_CNT, PKT_BP_ID
     pkt_bp_name = rstr.xeger(r'[A-Z][a-zA-Z0-9_]{0,10}')
 
-    pkt_bp_decl = "pkt_bp " + pkt_bp_name + " {\n"
+    pkt_bp_decl_stmt = "pkt_bp " + pkt_bp_name + " {\n"
     SCOPE_CNT += 1
 
     STRUCT_PKT_BP_IDS.append(pkt_bp_name)
+    PKT_BP_ID = pkt_bp_name
+    print(PKT_BP_ID)
 
     for _ in range(random.randint(1, 10)):
-        pkt_bp_decl += indentation() + var_decl(STRUCT, pkt_bp_name) + "\n"
+        pkt_bp_decl_stmt += indentation() + var_decl(STRUCT, pkt_bp_name) + "\n"
     
-    pkt_bp_decl += indentation() + "data_t data;" + "\n"
+    pkt_bp_decl_stmt += indentation() + "data_t data;" + "\n"
     DICT_OF_STRUCTS[pkt_bp_name].append({"name": "data", "type": "data_t"})
 
     SCOPE_CNT -= 1
-    pkt_bp_decl += indentation() + "}\n"
-    return pkt_bp_decl
+    pkt_bp_decl_stmt += indentation() + "}\n"
+    return pkt_bp_decl_stmt
 
 def dispatcher_decl():
     """
