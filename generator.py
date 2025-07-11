@@ -17,6 +17,10 @@ INT_TYPE = ["int8", "int16", "int32", "int64"]
 FLOAT_TYPE = ["float"]
 BOOL_TYPE = ["bool"]
 LIST_TYPE = ["list"]
+ADDR_TYPE = ["addr_t"]
+DATA_TYPE = ["data_t"]
+CHECKSUM_TYPE = ["checksum16_t"]
+ALL_TYPES = INT_TYPE + FLOAT_TYPE + BOOL_TYPE + LIST_TYPE + ADDR_TYPE + DATA_TYPE + CHECKSUM_TYPE
 
 BINARY_OPS = ["+", "-", "*", "/", "%", "==", "!=", "<", ">", "<=", ">=", "&&", "||"]
 UNARY_OPS = ["-", "!"]
@@ -90,8 +94,7 @@ def get_type():
     """
     Generates a random type declaration.
     """
-    types = INT_TYPE + FLOAT_TYPE + BOOL_TYPE + LIST_TYPE
-    return random.choice(types)
+    return random.choice(ALL_TYPES)
 
 def var_id():
     """
@@ -106,14 +109,14 @@ def catch_struct_value(struct_id, struct_fields):
     random_field = random.choice(struct_fields)
     return struct_id + "." + random_field["name"], random_field["type"]
 
-def catch_var_id(var_type=None):
+def catch_var_id(var_type=None, list_of_vars=LIST_OF_VARS):
     index = 0
     if var_type == None:
         while True:
-            index = random.randint(0, len(LIST_OF_VARS) - 1)
-            if(len(LIST_OF_VARS[index]) > 0):
+            index = random.randint(0, len(list_of_vars) - 1)
+            if(len(list_of_vars[index]) > 0):
                 break
-        random_var = random.choice(LIST_OF_VARS[index])
+        random_var = random.choice(list_of_vars[index])
         struct_id = random_var["type"]
         # Check if the variable is a struct-like variable
         if(struct_id in DICT_OF_STRUCTS):
@@ -121,25 +124,24 @@ def catch_var_id(var_type=None):
         return random_var["name"], random_var["type"]
     
     list_vars = []
-    for entry in LIST_OF_VARS:
+    for entry in list_of_vars:
         for var in entry:
             if(var["type"] == var_type):
                 list_vars.append(var["name"])
-    
+
     if(list_vars == []):
-        print("PROBLEM HEREEEEEE")
         return None, var_type
     
     random_var = random.choice(list_vars)
     return random_var, var_type
 
-def var_or_const(var_type=None):
+def var_or_const(var_type=None, list_of_vars=LIST_OF_VARS):
     """
     Returns a variable or a random constant.
     """
-    if((random.randint(0, 2) < 2 and len(LIST_OF_VARS) > 0 and VAR_CNT > 0)
+    if((random.randint(0, 2) < 2 and len(list_of_vars) > 0 and VAR_CNT > 0)
        or var_type not in ["int", "float"]):
-        return catch_var_id()
+        return catch_var_id(var_type, list_of_vars)
     else:
         # Generate a random int
         if(random.randint(0, 1)):
@@ -152,8 +154,8 @@ def expression(max_depth, expected_type=None):
     """
     Generates a random expression.
     """
-    if(expected_type != None and expected_type in ["void", "flow_id", "checksum16_t", "data_t", "instr_t"]):
-        return function_call(expected_type)
+    if(expected_type in ["void", "flow_id", "checksum16_t", "data_t", "instr_t"]):
+        return function_call(expected_type, PKT_BP_ID, DICT_OF_STRUCTS, CURR_EP_EVENT_TYPE, CONTEXT_NAME, LIST_OF_VARS)
 
     if(max_depth <= 0):
         return var_or_const()
@@ -192,9 +194,11 @@ def expression(max_depth, expected_type=None):
 def assign(expected_type=None):
     """
     Generates a random assignment expression.
-    """
+    """ 
     max_depth = random.randint(1, 10)
     exp_str, type = expression(max_depth, expected_type)
+    if(type == "NO_ARG_FLAG"):
+        return "", type
     return " = " + exp_str, type
 
 
@@ -545,7 +549,6 @@ def pkt_bp_decl():
 
     STRUCT_PKT_BP_IDS.append(pkt_bp_name)
     PKT_BP_ID = pkt_bp_name
-    print(PKT_BP_ID)
 
     for _ in range(random.randint(1, 10)):
         pkt_bp_decl_stmt += indentation() + var_decl(STRUCT, pkt_bp_name) + "\n"
