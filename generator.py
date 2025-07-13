@@ -360,7 +360,7 @@ def statements():
             elif(stmt_num == 5 and len(LIST_OF_VARS) and VAR_CNT > 0):
                 exp_str_1, type_1 = catch_var_id()
                 exp_str_2, type_2 = assign(type_1)
-                total_statements += indentation() + exp_str_1 + exp_str_2 + "\n"
+                total_statements += indentation() + exp_str_1 + exp_str_2 + ";\n"
             elif(stmt_num == 4):
                 total_statements += indentation() + var_decl() + "\n"
             elif(stmt_num == 3):
@@ -402,7 +402,7 @@ def statements():
             elif(stmt_num == 2 and len(LIST_OF_VARS) and VAR_CNT > 0):
                 exp_str_1, type_1 = catch_var_id()
                 exp_str_2, type_2 = assign(type_1)
-                total_statements += indentation() + exp_str_1 + exp_str_2 + "\n"
+                total_statements += indentation() + exp_str_1 + exp_str_2 + ";\n"
             elif(stmt_num == 1):
                 total_statements += indentation() + struct_inst_decl() + "\n"
             elif(stmt_num == 0):
@@ -453,6 +453,7 @@ def ep_decl():
             VAR_CNT += 3            
             ep_decl += statements()
             VAR_CNT -= 3
+            LIST_OF_VARS.pop()
 
             if(returns_instr):
                 VAR_CNT -= 1 
@@ -595,6 +596,7 @@ def generator():
         for _ in range(random.randint(3, 5)):
             f.write(ep_decl())
         f.write(dispatcher_decl())
+    #print(LIST_OF_VARS, VAR_CNT)
 
 
 if __name__=="__main__":
