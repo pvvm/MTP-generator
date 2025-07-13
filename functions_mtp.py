@@ -9,6 +9,12 @@ DATA_FUNCS = ["unseg_data", "seg_data"]
 INSTR_FUNCS = ["pkt_gen_instr", "timer_start_instr", "timer_cancel_instr", "timer_restart_instr",
                "new_ctx_instr", "new_ordered_data", "add_data_set", "flush_and_notify", "notify_instr"]
 
+def verify_empty_args(args):
+    for elem in args:
+        if(elem == ""):
+            return True
+    return False
+
 def void_func_call(CURR_EP_EVENT_TYPE, LIST_OF_VARS):
     """
     Generates a random function call that returns void.
@@ -17,7 +23,7 @@ def void_func_call(CURR_EP_EVENT_TYPE, LIST_OF_VARS):
     args = []
     args.append(var_or_const(CURR_EP_EVENT_TYPE, LIST_OF_VARS)[0])
 
-    if(None in args):
+    if(verify_empty_args(args)):
         return "", "NO_ARG_FLAG"
     return func_id + "(" + ", ".join(args) + ")"
 
@@ -32,7 +38,7 @@ def int_func_call(LIST_OF_VARS):
     elif(func_id == "nanoseconds"):
         args.append(var_or_const("int", LIST_OF_VARS)[0])
 
-    if(None in args):
+    if(verify_empty_args(args)):
         return "", "NO_ARG_FLAG"
     return func_id + "(" + ", ".join(args) + ")"
 
@@ -48,7 +54,7 @@ def flow_id_func_call(LIST_OF_VARS):
         for _ in range(random.randint(1, 4)):
             args.append(var_or_const("int", LIST_OF_VARS)[0])
 
-    if(None in args):
+    if(verify_empty_args(args)):
         return "", "NO_ARG_FLAG"
     return func_id + "(" + ", ".join(args) + ")"
 
@@ -79,15 +85,15 @@ def data_func_call(PKT_BP_ID, DICT_OF_STRUCTS, LIST_OF_VARS):
         args.append(var_or_const("int", LIST_OF_VARS)[0])
         args.append(var_or_const("int", LIST_OF_VARS)[0])
 
-        if(None in args):
+        if(verify_empty_args(args)):
             return "", "NO_ARG_FLAG"
-        return func_id + "(" + ", ".join(args[:2]) + ", [" + ", ".join(args[2:])  + "])"
+        return func_id + "(" + ", ".join(args[:3]) + ", [" + ", ".join(args[3:])  + "])"
     
     elif(func_id == "seg_data"):
         args.append(var_or_const("addr_t", LIST_OF_VARS)[0])
         args.append(var_or_const("int", LIST_OF_VARS)[0])
 
-        if(None in args):
+        if(verify_empty_args(args)):
             return "", "NO_ARG_FLAG"
         return func_id + "(" + ", ".join(args) + ")"
     
@@ -135,7 +141,7 @@ def instr_func_call(PKT_BP_ID, CURR_EP_EVENT_TYPE, CONTEXT_NAME, LIST_OF_VARS):
         args.append(var_or_const("int", LIST_OF_VARS)[0])
         args.append(var_or_const("addr_t", LIST_OF_VARS)[0])
     
-    if(None in args):
+    if(verify_empty_args(args)):
         return "", "NO_ARG_FLAG"
     return func_id + "(" + ", ".join(args) + ")"
 

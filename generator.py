@@ -4,23 +4,26 @@ from functions_mtp import *
 
 # TODO: add function/method call
 # TODO: add a way to different EPs to be shared between events
-# TODO: add more types of variables
 # TODO: maybe we should send a list with the types of the variables we want from var_or_const.
 #       This will also be important to check the different kinds of int
+# TODO: fix bug that variables declared in iteration and condition args can be accessed out of its scope
 
 STRUCT = 1
 EVENT = 2
 
 SCOPE_CNT = 0
 
-INT_TYPE = ["int8", "int16", "int32", "int64"]
+#INT_TYPE = ["int8", "int16", "int32", "int64"]
+INT_TYPE = ["int"]
 FLOAT_TYPE = ["float"]
 BOOL_TYPE = ["bool"]
 LIST_TYPE = ["list"]
 ADDR_TYPE = ["addr_t"]
 DATA_TYPE = ["data_t"]
 CHECKSUM_TYPE = ["checksum16_t"]
-ALL_TYPES = INT_TYPE + FLOAT_TYPE + BOOL_TYPE + LIST_TYPE + ADDR_TYPE + DATA_TYPE + CHECKSUM_TYPE
+INSTR_TYPE = ["instr_t"]
+FLOW_TYPE = ["flow_id"]
+ALL_TYPES = INT_TYPE + FLOAT_TYPE + BOOL_TYPE + LIST_TYPE + ADDR_TYPE + DATA_TYPE + CHECKSUM_TYPE + INSTR_TYPE + FLOW_TYPE
 
 BINARY_OPS = ["+", "-", "*", "/", "%", "==", "!=", "<", ">", "<=", ">=", "&&", "||"]
 UNARY_OPS = ["-", "!"]
@@ -90,10 +93,12 @@ def indentation():
     """
     return "\t" * SCOPE_CNT
 
-def get_type():
+def get_type(no_list=False):
     """
     Generates a random type declaration.
     """
+    if(no_list):
+        return random.choice(INT_TYPE + FLOAT_TYPE + BOOL_TYPE + ADDR_TYPE + DATA_TYPE + CHECKSUM_TYPE + INSTR_TYPE + FLOW_TYPE)
     return random.choice(ALL_TYPES)
 
 def var_id():
@@ -140,36 +145,47 @@ def var_or_const(var_type=None, list_of_vars=LIST_OF_VARS):
     Returns a variable or a random constant.
     """
     if((random.randint(0, 2) < 2 and len(list_of_vars) > 0 and VAR_CNT > 0)
-       or var_type not in ["int", "float"]):
-        return catch_var_id(var_type, list_of_vars)
+       or var_type not in ["int", "float", "bool"]):
+        return_var, return_type = catch_var_id(var_type, list_of_vars)
+        if(return_var == None):
+            return "", "NO_ARG_FLAG"
+        return return_var, return_type
     else:
-        # Generate a random int
-        if(random.randint(0, 1)):
+        # Generate a random constant
+        ran = random.randint(0, 2)
+        if(ran == 2 or var_type == "int"):
             return rstr.xeger(r'[0-9]{1,10}'), "int"
-        # Generate a random float
-        else:
+        elif(ran == 1 or var_type == "float"):
             return rstr.xeger(r'[0-9]{1,10}[.][0-9]{1,5}'), "float"
+        elif(ran == 0 or var_type == "bool"):
+            return random.choice(["true", "false"]), "bool"
 
 def expression(max_depth, expected_type=None):
     """
     Generates a random expression.
     """
+    #if(expected_type != None and "list<" in expected_type):
+    #    expected_type = expected_type.split("<")[1].split(">")[0]
+    #print(expected_type)
     if(expected_type in ["void", "flow_id", "checksum16_t", "data_t", "instr_t"]):
         return function_call(expected_type, PKT_BP_ID, DICT_OF_STRUCTS, CURR_EP_EVENT_TYPE, CONTEXT_NAME, LIST_OF_VARS)
+    elif(expected_type in ["addr_t"] or
+        (expected_type != None and expected_type.split("<")[0] == "list")):
+        return "", "NO_ARG_FLAG"
 
     if(max_depth <= 0):
-        return var_or_const()
+        return var_or_const(expected_type)
     max_depth -= 1
 
     rnd_num = random.randint(0, 3)
     if(rnd_num == 3):
         # Binary operation
-        exp_str_1, type_1 = var_or_const()
-        exp_str_2, type_2 = expression(max_depth)
+        exp_str_1, type_1 = var_or_const(expected_type)
+        exp_str_2, type_2 = expression(max_depth, expected_type)
         operation = random.choice(BINARY_OPS)
         if(type_1 not in ["int", "float", "bool"] or type_2 not in ["int", "float", "bool"]):
             # TODO: maybe we should send a list with the types of the variables we want from var_or_const
-            return var_or_const()
+            return var_or_const(expected_type)
         if(operation in ["==", "!=", "<", ">", "<=", ">=", "&&", "||"]):
             return exp_str_1 + " " + operation + " " + exp_str_2, "bool"
         if(type_1 == "float" or type_2 == "float"):
@@ -177,18 +193,18 @@ def expression(max_depth, expected_type=None):
         return exp_str_1 + " " + operation + " " + exp_str_2, "int"
     elif(rnd_num == 2):
         # Unary operation
-        exp_str, type = expression(max_depth)
+        exp_str, type = expression(max_depth, expected_type)
         if(type not in ["int", "float", "bool"]):
             # TODO: maybe we should send a list with the types of the variables we want from var_or_const
-            return var_or_const()
+            return var_or_const(expected_type)
         return random.choice(UNARY_OPS) + exp_str, type
     elif(rnd_num == 1):
         # Nested expression
-        exp_str, type = expression(max_depth)
+        exp_str, type = expression(max_depth, expected_type)
         return "(" + exp_str + ")", type
     else:
         # Variable or constant
-        return var_or_const()
+        return var_or_const(expected_type)
 
 
 def assign(expected_type=None):
@@ -209,6 +225,8 @@ def var_decl(struct_like=False, struct_name=None, event_type=None):
     global VAR_CNT
     id = var_id()
     type_id = get_type()
+    if(type_id == "list"):
+        type_id = "list<" + get_type(True) + ">"
     decl = type_id + " " + id
     # Assign value
     if(random.randint(0, 1) and not struct_like):
