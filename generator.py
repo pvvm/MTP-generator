@@ -1,15 +1,17 @@
 import random
 import rstr
 from functions_mtp import *
+from methods_mtp import method_call
 
-# TODO: add function/method call
+# TODO: fix sliding_wnd methods. They aren't finding sliding window variables (there's one default in ctx)
 # TODO: add a way to different EPs to be shared between events
 # TODO: maybe we should send a list with the types of the variables we want from var_or_const.
 #       This will also be important to check the different kinds of int
-# TODO: fix bug that variables declared in iteration and condition args can be accessed out of its scope
 
 STRUCT = 1
 EVENT = 2
+
+IN_EP = False
 
 SCOPE_CNT = 0
 
@@ -91,7 +93,7 @@ def indentation():
     """
     Returns a string with the current indentation level.
     """
-    return "\t" * SCOPE_CNT
+    return "\t" * (SCOPE_CNT + (1 if IN_EP else 0))
 
 def get_type(no_list=False):
     """
@@ -129,14 +131,23 @@ def catch_var_id(var_type=None, list_of_vars=LIST_OF_VARS):
         return random_var["name"], random_var["type"]
     
     list_vars = []
+    # List containing the types of variables "list"
+    list_list_type = []
     for entry in list_of_vars:
         for var in entry:
-            if(var["type"] == var_type):
+            if(var_type == "list" and "list<" in var["type"]):
+                list_vars.append(var["name"])
+                list_list_type.append(var["type"])
+            elif(var["type"] == var_type):
                 list_vars.append(var["name"])
 
     if(list_vars == []):
         return None, var_type
     
+    if(var_type == "list"):
+        index = random.randint(0, len(list_vars) - 1)
+        return list_vars[index], list_list_type[index]
+
     random_var = random.choice(list_vars)
     return random_var, var_type
 
@@ -218,13 +229,16 @@ def assign(expected_type=None):
     return " = " + exp_str, type
 
 
-def var_decl(struct_like=False, struct_name=None, event_type=None):
+def var_decl(struct_like=False, struct_name=None, event_type=None, required_type=None):
     """
     Generates a random variable declaration.
     """
     global VAR_CNT
     id = var_id()
-    type_id = get_type()
+    if(required_type == None):
+        type_id = get_type()
+    else:
+        type_id = required_type
     if(type_id == "list"):
         type_id = "list<" + get_type(True) + ">"
     decl = type_id + " " + id
@@ -294,14 +308,16 @@ def for_statement():
     global SCOPE_CNT
     first_arg = ""
     if(random.randint(0, 1) and len(LIST_OF_VARS) > 0 and VAR_CNT > 0):
-        exp_str_1, type_1 = catch_var_id()
+        exp_str_1, type_1 = catch_var_id(var_type="int")
+        if(exp_str_1 == None):
+            return None
         exp_str_2, type_2 = assign(type_1)
         first_arg = exp_str_1 + exp_str_2 + ";"
     else:
-        first_arg = var_decl()
-    second_arg_str, second_arg_type = expression(random.randint(1, 10))
+        first_arg = var_decl(required_type="int")
+    second_arg_str, second_arg_type = expression(random.randint(1, 10), expected_type="bool")
 
-    third_arg_str_1, third_arg_type_1 = catch_var_id()
+    third_arg_str_1, third_arg_type_1 = catch_var_id(var_type="int")
     third_arg_str_2, third_arg_type_2 = assign(third_arg_type_1)
     for_stmt = "for(" + first_arg + " " + second_arg_str + "; " + third_arg_str_1 + third_arg_str_2 + ") {\n"
     SCOPE_CNT += 1
@@ -316,7 +332,7 @@ def while_statement():
     Generates a random while loop statement.
     """
     global SCOPE_CNT
-    exp_str, type = expression(random.randint(1, 10))
+    exp_str, type = expression(random.randint(1, 10), expected_type="int")
     while_stmt = "while(" + exp_str + ") {\n"
     SCOPE_CNT += 1
     while_stmt += statements()
@@ -330,7 +346,7 @@ def condition_statement():
     Generates a random conditional statement.
     """
     global SCOPE_CNT
-    exp_str, type = expression(random.randint(1, 10))
+    exp_str, type = expression(random.randint(1, 10), expected_type="int")
     cond_stmt = "if(" + exp_str + ") {\n"
     SCOPE_CNT += 1
     cond_stmt += statements()
@@ -338,7 +354,7 @@ def condition_statement():
     cond_stmt += indentation() + "}"
 
     for _ in range(random.randint(0, 2)):
-        exp_str, type = expression(random.randint(1, 10))
+        exp_str, type = expression(random.randint(1, 10), expected_type="int")
         cond_stmt += "\n" + indentation() + "else if(" + exp_str + ") {\n"
         SCOPE_CNT += 1
         cond_stmt += statements()
@@ -354,13 +370,14 @@ def condition_statement():
 
     return indentation() + cond_stmt
 
-def statements():
+def statements(default_vars=[]):
     """
     Generates a random sequence of statements.
     """
     global VAR_CNT
 
-    LIST_OF_VARS.append([])
+    LIST_OF_VARS.append(default_vars)
+    VAR_CNT += len(default_vars)
 
     total_statements = ""
 
@@ -368,9 +385,15 @@ def statements():
     if(SCOPE_CNT < 3):
         for i in range(random.randint(1, MAX_ITER)):
             REPEAT = False
-            stmt_num = random.randint(0, 6)
+            stmt_num = random.randint(0, 7)
 
-            if(stmt_num == 6):
+            if(stmt_num == 7):
+                method_stmt = method_call(LIST_OF_VARS)
+                if(method_stmt != None):
+                    total_statements += indentation() + method_stmt + ";\n"
+                    continue
+                REPEAT = True
+            elif(stmt_num == 6):
                 if(i >= MAX_ITER - 1):
                     total_statements += indentation() + return_statement() + "\n"
                     continue
@@ -411,8 +434,14 @@ def statements():
     else:
         for i in range(random.randint(1, MAX_ITER)):
             REPEAT = False
-            stmt_num = random.randint(0, 3)
-            if(stmt_num == 3):
+            stmt_num = random.randint(0, 4)
+            if(stmt_num == 4):
+                method_stmt = method_call(LIST_OF_VARS)
+                if(method_stmt != None):
+                    total_statements += indentation() + method_stmt + ";\n"
+                    continue
+                REPEAT = True
+            elif(stmt_num == 3):
                 if(i >= MAX_ITER - 1):
                     total_statements += indentation() + return_statement() + "\n"
                     continue
@@ -437,8 +466,9 @@ def ep_decl():
     """
     Generates a random event processor declaration.
     """
-    global SCOPE_CNT, CURR_EP_EVENT_TYPE, CURR_EP_RETURN_TYPE, VAR_CNT
+    global SCOPE_CNT, CURR_EP_EVENT_TYPE, CURR_EP_RETURN_TYPE, VAR_CNT, IN_EP
     ep_decl = ""
+    IN_EP = True
 
     for event_name in DICT_OF_EV_EP.keys():
         for _ in range(random.randint(1, 3)):
@@ -455,29 +485,36 @@ def ep_decl():
             DICT_OF_EV_EP[event_name].append(ep_name)
             ep_decl += ep_name + "(" + event_name + " ev, " + CONTEXT_NAME + " ctx, " + SCRATCH_NAME +" scratch){\n"
 
-            SCOPE_CNT += 1
-            LIST_OF_VARS.append([{"name": "ev", "type": event_name},
-                                 {"name": "ctx", "type": CONTEXT_NAME},
-                                 {"name": "scratch", "type": SCRATCH_NAME}])
-
             CURR_EP_EVENT_TYPE = event_name
+
+            #SCOPE_CNT += 1
+            #LIST_OF_VARS.append([{"name": "ev", "type": event_name},
+            #                     {"name": "ctx", "type": CONTEXT_NAME},
+            #                     {"name": "scratch", "type": SCRATCH_NAME}])
+            
+            list_default_vars = [{"name": "ev", "type": event_name},
+                                 {"name": "ctx", "type": CONTEXT_NAME},
+                                 {"name": "scratch", "type": SCRATCH_NAME}]
             
             # TODO: maybe add a randomized list<instr_t> variable declaration 
             if(returns_instr):
-                LIST_OF_VARS[-1].append({"name": "out", "type": "list<instr_t>"})
+                #LIST_OF_VARS[-1].append({"name": "out", "type": "list<instr_t>"})
+                list_default_vars += [{"name": "out", "type": "list<instr_t>"}]
                 ep_decl += indentation() + "list<instr_t> out;\n"
                 VAR_CNT += 1 
 
-            VAR_CNT += 3            
-            ep_decl += statements()
-            VAR_CNT -= 3
-            LIST_OF_VARS.pop()
+            #VAR_CNT += 3            
+            ep_decl += statements(list_default_vars)
+            #VAR_CNT -= 3
+            #LIST_OF_VARS.pop()
 
-            if(returns_instr):
-                VAR_CNT -= 1 
+            #if(returns_instr):
+            #    VAR_CNT -= 1 
 
-            SCOPE_CNT -= 1
+            #SCOPE_CNT -= 1
             ep_decl += "}\n\n"
+
+    IN_EP = False
     return ep_decl
 
 def struct_decl():
@@ -530,6 +567,9 @@ def context_decl():
 
     for _ in range(random.randint(1, 15)):
         context_decl += indentation() + var_decl(STRUCT, ctx_name) + "\n"
+
+    # Special declaration of sliding window
+    context_decl += indentation() + var_decl(STRUCT, ctx_name, required_type="sliding_wnd") + "\n"
 
     SCOPE_CNT -= 1
     context_decl += indentation() + "}\n"
