@@ -80,7 +80,7 @@ def data_func_call(PKT_BP_ID, DICT_OF_STRUCTS, LIST_OF_VARS):
             if entry["type"] in ["int", "int8", "int16", "int32", "int64"]:
                 int_fields.append(entry["name"])
         if(int_fields == []):
-            return "ERROR IN DATA FUNC CALL"
+            return "", "NO_ARG_FLAG"
         args.append(PKT_BP_ID + "::" + random.choice(int_fields))
         args.append(var_or_const("int", LIST_OF_VARS)[0])
         args.append(var_or_const("int", LIST_OF_VARS)[0])
@@ -97,7 +97,7 @@ def data_func_call(PKT_BP_ID, DICT_OF_STRUCTS, LIST_OF_VARS):
             return "", "NO_ARG_FLAG"
         return func_id + "(" + ", ".join(args) + ")"
     
-    return "ERROR IN DATA FUNC CALL"
+    return "", "NO_ARG_FLAG"
 
 def instr_func_call(PKT_BP_ID, CURR_EP_EVENT_TYPE, CONTEXT_NAME, LIST_OF_VARS):
     """

@@ -1,12 +1,20 @@
+import sys
 import random
 import rstr
 from functions_mtp import *
 from methods_mtp import method_call
+from error_gen import generate_error
 
 # TODO: fix sliding_wnd methods. They aren't finding sliding window variables (there's one default in ctx)
 # TODO: add a way to different EPs to be shared between events
 # TODO: maybe we should send a list with the types of the variables we want from var_or_const.
 #       This will also be important to check the different kinds of int
+
+ARGUMENTS = ["-lex", "-syn", "-sem"]
+LEX_FLAG = False
+SYN_FLAG = False
+SEM_FLAG = False
+
 
 STRUCT = 1
 EVENT = 2
@@ -117,8 +125,13 @@ def catch_struct_value(struct_id, struct_fields):
     return struct_id + "." + random_field["name"], random_field["type"]
 
 def catch_var_id(var_type=None, list_of_vars=LIST_OF_VARS):
+    if(SEM_FLAG and random.randint(0, 100) == 0):
+        teste = var_id()
+        #print(teste)
+        return teste, "SEM_FLAG"
+
     index = 0
-    if var_type == None:
+    if var_type == None or var_type == "SEM_FLAG":
         while True:
             index = random.randint(0, len(list_of_vars) - 1)
             if(len(list_of_vars[index]) > 0):
@@ -208,11 +221,11 @@ def expression(max_depth, expected_type=None):
         if(type not in ["int", "float", "bool"]):
             # TODO: maybe we should send a list with the types of the variables we want from var_or_const
             return var_or_const(expected_type)
-        return random.choice(UNARY_OPS) + exp_str, type
+        return random.choice(UNARY_OPS) + " " + exp_str, type
     elif(rnd_num == 1):
         # Nested expression
         exp_str, type = expression(max_depth, expected_type)
-        return "(" + exp_str + ")", type
+        return "( " + exp_str + " )", type
     else:
         # Variable or constant
         return var_or_const(expected_type)
@@ -224,7 +237,9 @@ def assign(expected_type=None):
     """ 
     max_depth = random.randint(1, 10)
     exp_str, type = expression(max_depth, expected_type)
-    if(type == "NO_ARG_FLAG"):
+    #if(exp_str == ""):
+    #    print("TYPE:", type)
+    if(type == "NO_ARG_FLAG" and not SEM_FLAG):
         return "", type
     return " = " + exp_str, type
 
@@ -248,7 +263,7 @@ def var_decl(struct_like=False, struct_name=None, event_type=None, required_type
         decl += exp_str
 
     if(not struct_like):
-        LIST_OF_VARS[SCOPE_CNT].append({"name": id, "type": type_id})
+        LIST_OF_VARS[SCOPE_CNT - 1].append({"name": id, "type": type_id})
         VAR_CNT += 1
     else:     
         if(struct_name not in DICT_OF_STRUCTS):
@@ -260,7 +275,7 @@ def var_decl(struct_like=False, struct_name=None, event_type=None, required_type
                 DICT_OF_EV_DECL[event_type][struct_name] = []
                 DICT_OF_EV_EP[struct_name] = []
             DICT_OF_EV_DECL[event_type][struct_name].append({"name": id, "type": type_id})
-    return decl + ";"
+    return decl + " ;"
 
 def struct_inst_decl():
     """
@@ -272,13 +287,13 @@ def struct_inst_decl():
 
     struct_name = random.choice(STRUCT_PKT_BP_IDS)
     id = var_id()
-    decl = struct_name + " " + id + ";"
+    decl = struct_name + " " + id + " ;"
 
-    LIST_OF_VARS[SCOPE_CNT].append({"name": id, "type": struct_name})
+    LIST_OF_VARS[SCOPE_CNT - 1].append({"name": id, "type": struct_name})
     VAR_CNT += 1
 
     for entry in DICT_OF_STRUCTS[struct_name]:
-        LIST_OF_VARS[SCOPE_CNT].append({"name": id + "." + entry["name"], "type": entry["type"]})
+        LIST_OF_VARS[SCOPE_CNT - 1].append({"name": id + "." + entry["name"], "type": entry["type"]})
         VAR_CNT += 1
 
     return decl
@@ -293,37 +308,44 @@ def return_statement():
         var_id = catch_var_id("list<instr_t>")[0]
         if(var_id == None):
             return "PROBLEM"
-        return "return " + var_id + ";"
+        return "return " + var_id + " ;"
     if(random.randint(0, 1) and len(LIST_OF_VARS) and VAR_CNT > 0):
         exp_str, type = catch_var_id()
-        return "return " + exp_str + assign(type) + ";"
+        return "return " + exp_str + assign(type) + " ;"
     exp_str, type = expression(random.randint(1, 10))
-    return "return " + exp_str + ";"
+    return "return " + exp_str + " ;"
 
 
 def for_statement():
     """
     Generates a random for loop statement.
     """
-    global SCOPE_CNT
+    global SCOPE_CNT, VAR_CNT
     first_arg = ""
     if(random.randint(0, 1) and len(LIST_OF_VARS) > 0 and VAR_CNT > 0):
         exp_str_1, type_1 = catch_var_id(var_type="int")
         if(exp_str_1 == None):
             return None
+        SCOPE_CNT += 1
+        LIST_OF_VARS.append([])
         exp_str_2, type_2 = assign(type_1)
         first_arg = exp_str_1 + exp_str_2 + ";"
     else:
+        SCOPE_CNT += 1
+        LIST_OF_VARS.append([])
         first_arg = var_decl(required_type="int")
     second_arg_str, second_arg_type = expression(random.randint(1, 10), expected_type="bool")
 
     third_arg_str_1, third_arg_type_1 = catch_var_id(var_type="int")
     third_arg_str_2, third_arg_type_2 = assign(third_arg_type_1)
-    for_stmt = "for(" + first_arg + " " + second_arg_str + "; " + third_arg_str_1 + third_arg_str_2 + ") {\n"
-    SCOPE_CNT += 1
+    for_stmt = "for ( " + first_arg + " " + second_arg_str + " ; " + third_arg_str_1 + third_arg_str_2 + " ) {\n"
+    
     for_stmt += statements()
     SCOPE_CNT -= 1
     for_stmt += indentation() + "}"
+
+    VAR_CNT -= len(LIST_OF_VARS[-1])
+    LIST_OF_VARS.pop()
 
     return indentation() + for_stmt
 
@@ -331,13 +353,20 @@ def while_statement():
     """
     Generates a random while loop statement.
     """
-    global SCOPE_CNT
-    exp_str, type = expression(random.randint(1, 10), expected_type="int")
-    while_stmt = "while(" + exp_str + ") {\n"
+    global SCOPE_CNT, VAR_CNT
+    LIST_OF_VARS.append([])
     SCOPE_CNT += 1
+    while True:
+        exp_str, type = expression(random.randint(1, 10), expected_type="int")
+        if(exp_str != ""):
+            break
+    while_stmt = "while ( " + exp_str + " ) {\n"
     while_stmt += statements()
     SCOPE_CNT -= 1
     while_stmt += indentation() + "}"
+
+    VAR_CNT -= len(LIST_OF_VARS[-1])
+    LIST_OF_VARS.pop()
 
     return indentation() + while_stmt
 
@@ -345,28 +374,46 @@ def condition_statement():
     """
     Generates a random conditional statement.
     """
-    global SCOPE_CNT
-    exp_str, type = expression(random.randint(1, 10), expected_type="int")
-    cond_stmt = "if(" + exp_str + ") {\n"
+    global SCOPE_CNT, VAR_CNT
+    while True:
+        exp_str, type = expression(random.randint(1, 10), expected_type="int")
+        if(exp_str != ""):
+            break
+    cond_stmt = "if ( " + exp_str + " ) {\n"
     SCOPE_CNT += 1
+    LIST_OF_VARS.append([])
     cond_stmt += statements()
     SCOPE_CNT -= 1
     cond_stmt += indentation() + "}"
 
+    VAR_CNT -= len(LIST_OF_VARS[-1])
+    LIST_OF_VARS.pop()
+
     for _ in range(random.randint(0, 2)):
-        exp_str, type = expression(random.randint(1, 10), expected_type="int")
-        cond_stmt += "\n" + indentation() + "else if(" + exp_str + ") {\n"
+        while True:
+            exp_str, type = expression(random.randint(1, 10), expected_type="int")
+            if(exp_str != ""):
+                break
+        cond_stmt += "\n" + indentation() + "else if ( " + exp_str + " ) {\n"
         SCOPE_CNT += 1
+        LIST_OF_VARS.append([])
         cond_stmt += statements()
         SCOPE_CNT -= 1
         cond_stmt += indentation() + "}"
+
+        VAR_CNT -= len(LIST_OF_VARS[-1])
+        LIST_OF_VARS.pop()
     
     if(random.randint(0, 1)):
         cond_stmt += "\n" + indentation() + "else {\n"
         SCOPE_CNT += 1
+        LIST_OF_VARS.append([])
         cond_stmt += statements()
         SCOPE_CNT -= 1
         cond_stmt += indentation() + "}"
+
+        VAR_CNT -= len(LIST_OF_VARS[-1])
+        LIST_OF_VARS.pop()
 
     return indentation() + cond_stmt
 
@@ -374,14 +421,14 @@ def statements(default_vars=[]):
     """
     Generates a random sequence of statements.
     """
-    global VAR_CNT
+    #global VAR_CNT
 
-    LIST_OF_VARS.append(default_vars)
-    VAR_CNT += len(default_vars)
+    #LIST_OF_VARS.append(default_vars)
+    #VAR_CNT += len(default_vars)
 
     total_statements = ""
 
-    MAX_ITER = 5
+    MAX_ITER = 10
     if(SCOPE_CNT < 3):
         for i in range(random.randint(1, MAX_ITER)):
             REPEAT = False
@@ -390,7 +437,7 @@ def statements(default_vars=[]):
             if(stmt_num == 7):
                 method_stmt = method_call(LIST_OF_VARS)
                 if(method_stmt != None):
-                    total_statements += indentation() + method_stmt + ";\n"
+                    total_statements += indentation() + method_stmt + " ;\n"
                     continue
                 REPEAT = True
             elif(stmt_num == 6):
@@ -401,7 +448,7 @@ def statements(default_vars=[]):
             elif(stmt_num == 5 and len(LIST_OF_VARS) and VAR_CNT > 0):
                 exp_str_1, type_1 = catch_var_id()
                 exp_str_2, type_2 = assign(type_1)
-                total_statements += indentation() + exp_str_1 + exp_str_2 + ";\n"
+                total_statements += indentation() + exp_str_1 + exp_str_2 + " ;\n"
             elif(stmt_num == 4):
                 total_statements += indentation() + var_decl() + "\n"
             elif(stmt_num == 3):
@@ -438,7 +485,7 @@ def statements(default_vars=[]):
             if(stmt_num == 4):
                 method_stmt = method_call(LIST_OF_VARS)
                 if(method_stmt != None):
-                    total_statements += indentation() + method_stmt + ";\n"
+                    total_statements += indentation() + method_stmt + " ;\n"
                     continue
                 REPEAT = True
             elif(stmt_num == 3):
@@ -449,7 +496,7 @@ def statements(default_vars=[]):
             elif(stmt_num == 2 and len(LIST_OF_VARS) and VAR_CNT > 0):
                 exp_str_1, type_1 = catch_var_id()
                 exp_str_2, type_2 = assign(type_1)
-                total_statements += indentation() + exp_str_1 + exp_str_2 + ";\n"
+                total_statements += indentation() + exp_str_1 + exp_str_2 + " ;\n"
             elif(stmt_num == 1):
                 total_statements += indentation() + struct_inst_decl() + "\n"
             elif(stmt_num == 0):
@@ -458,15 +505,15 @@ def statements(default_vars=[]):
             if(REPEAT):
                 i -= 1
 
-    VAR_CNT -= len(LIST_OF_VARS[-1])
-    LIST_OF_VARS.pop()
+    #VAR_CNT -= len(LIST_OF_VARS[-1])
+    #LIST_OF_VARS.pop()
     return total_statements
 
 def ep_decl():
     """
     Generates a random event processor declaration.
     """
-    global SCOPE_CNT, CURR_EP_EVENT_TYPE, CURR_EP_RETURN_TYPE, VAR_CNT, IN_EP
+    global SCOPE_CNT, CURR_EP_EVENT_TYPE, CURR_EP_RETURN_TYPE, VAR_CNT, IN_EP, VAR_CNT
     ep_decl = ""
     IN_EP = True
 
@@ -483,35 +530,35 @@ def ep_decl():
 
             ep_name = rstr.xeger(r'[A-Z][a-zA-Z0-9_]{0,10}')
             DICT_OF_EV_EP[event_name].append(ep_name)
-            ep_decl += ep_name + "(" + event_name + " ev, " + CONTEXT_NAME + " ctx, " + SCRATCH_NAME +" scratch){\n"
+            ep_decl += ep_name + "( " + event_name + " ev , " + CONTEXT_NAME + " ctx , " + SCRATCH_NAME +" scratch ) {\n"
 
             CURR_EP_EVENT_TYPE = event_name
 
-            #SCOPE_CNT += 1
-            #LIST_OF_VARS.append([{"name": "ev", "type": event_name},
-            #                     {"name": "ctx", "type": CONTEXT_NAME},
-            #                     {"name": "scratch", "type": SCRATCH_NAME}])
-            
-            list_default_vars = [{"name": "ev", "type": event_name},
+            SCOPE_CNT += 1
+            LIST_OF_VARS.append([{"name": "ev", "type": event_name},
                                  {"name": "ctx", "type": CONTEXT_NAME},
-                                 {"name": "scratch", "type": SCRATCH_NAME}]
+                                 {"name": "scratch", "type": SCRATCH_NAME}])
+            
+            #list_default_vars = [{"name": "ev", "type": event_name},
+            #                     {"name": "ctx", "type": CONTEXT_NAME},
+            #                     {"name": "scratch", "type": SCRATCH_NAME}]
             
             # TODO: maybe add a randomized list<instr_t> variable declaration 
             if(returns_instr):
-                #LIST_OF_VARS[-1].append({"name": "out", "type": "list<instr_t>"})
-                list_default_vars += [{"name": "out", "type": "list<instr_t>"}]
-                ep_decl += indentation() + "list<instr_t> out;\n"
+                LIST_OF_VARS[-1].append({"name": "out", "type": "list<instr_t>"})
+                #list_default_vars += [{"name": "out", "type": "list<instr_t>"}]
+                ep_decl += indentation() + "list<instr_t> out ;\n"
                 VAR_CNT += 1 
 
-            #VAR_CNT += 3            
-            ep_decl += statements(list_default_vars)
-            #VAR_CNT -= 3
-            #LIST_OF_VARS.pop()
+            VAR_CNT += 3         
+            ep_decl += statements()
+            VAR_CNT -= len(LIST_OF_VARS[-1])
+            LIST_OF_VARS.pop()
 
             #if(returns_instr):
             #    VAR_CNT -= 1 
 
-            #SCOPE_CNT -= 1
+            SCOPE_CNT -= 1
             ep_decl += "}\n\n"
 
     IN_EP = False
@@ -612,7 +659,7 @@ def pkt_bp_decl():
     for _ in range(random.randint(1, 10)):
         pkt_bp_decl_stmt += indentation() + var_decl(STRUCT, pkt_bp_name) + "\n"
     
-    pkt_bp_decl_stmt += indentation() + "data_t data;" + "\n"
+    pkt_bp_decl_stmt += indentation() + "data_t data ;" + "\n"
     DICT_OF_STRUCTS[pkt_bp_name].append({"name": "data", "type": "data_t"})
 
     SCOPE_CNT -= 1
@@ -635,7 +682,7 @@ def dispatcher_decl():
                 ep_chain += ", "
             ep_chain += ep_name
             first = False
-        disp_decl += indentation() + event_name + " -> {" + ep_chain + "};\n"
+        disp_decl += indentation() + event_name + " -> { " + ep_chain + " } ;\n"
 
     SCOPE_CNT -= 1
     disp_decl += "}\n"
@@ -643,17 +690,35 @@ def dispatcher_decl():
 
 
 def generator():
+    global LEX_FLAG, SYN_FLAG, SEM_FLAG
+    for i in range(1, len(sys.argv)):
+        if(sys.argv[i] not in ARGUMENTS):
+            print("Invalid argument: " + sys.argv[i])
+            exit(1)
+        if(sys.argv[i] == "-lex"):
+            LEX_FLAG = True
+        elif(sys.argv[i] == "-syn"):
+            SYN_FLAG = True
+        elif(sys.argv[i] == "-sem"):
+            SEM_FLAG = True
+
+    output = ""
     with open("generated_program.mtp", "w") as f:
         for _ in range(random.randint(1, 3)):
-            f.write(struct_decl())
+            output += struct_decl()
         for _ in range(random.randint(3, 5)):
-            f.write(event_decl())
-        f.write(context_decl())
-        f.write(scratch_decl())
-        f.write(pkt_bp_decl())
+            output += event_decl()
+        output += context_decl()
+        output += scratch_decl()
+        output += pkt_bp_decl()
         for _ in range(random.randint(3, 5)):
-            f.write(ep_decl())
-        f.write(dispatcher_decl())
+            output += ep_decl()
+        output += dispatcher_decl()
+
+        if(LEX_FLAG or SYN_FLAG):
+            f.write(generate_error(output, LEX_FLAG, SYN_FLAG))
+        else:
+            f.write(output)
     #print(LIST_OF_VARS, VAR_CNT)
 
 
